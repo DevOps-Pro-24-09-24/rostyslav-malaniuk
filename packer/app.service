@@ -1,0 +1,14 @@
+[Unit]
+Description=My Application
+After=network.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/myapp
+ExecStart=/usr/bin/python3 /home/ubuntu/myapp/app.py
+Restart=always
+Environment=PATH=/usr/bin:/usr/local/bin
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
