@@ -1,0 +1,87 @@
+- name: Deploy application
+  hosts: all
+  become: true
+  vars:
+    repo_url: "{{ repo }}"
+    app_dir: "{{ dir }}"
+  tasks:
+    - name: Update apt packages
+      ansible.builtin.apt:
+        update_cache: true
+
+    - name: Upgrade all packages
+      ansible.builtin.apt:
+        upgrade: dist
+
+    - name: Clone the application repository
+      ansible.builtin.git:
+        repo: "{{ repo_url }}"
+        dest: "{{ app_dir }}"
+        version: orm
+
+    - name: Create Python virtual environment
+      ansible.builtin.command:
+        cmd: python3 -m venv /opt/app/venv
+        creates: /opt/app/venv
+
+    - name: Activate virtual environment and install dependencies
+      ansible.builtin.shell: |
+        source /opt/app/venv/bin/activate
+        pip install -r /opt/app/requirements.txt
+      args:
+        executable: /bin/bash
+
+    - name: Set MySQL environment variables
+      ansible.builtin.shell: |
+        echo "export MYSQL_USER=admin" >> /etc/profile.d/mysql_env.sh
+        echo "export MYSQL_PASSWORD=P@ssword" >> /etc/profile.d/mysql_env.sh
+        echo "export MYSQL_DB=flask_db" >> /etc/profile.d/mysql_env.sh
+        echo "export MYSQL_HOST=" >> /etc/profile.d/mysql_env.sh
+        echo "export FLASK_CONFIG=mysql" >> /etc/profile.d/mysql_env.sh
+        chmod +x /etc/profile.d/mysql_env.sh
+        source /etc/profile.d/mysql_env.sh
+      args:
+        executable: /bin/bash
+      become: true
+
+    - name: Configure systemd service for the app
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/app.service
+        content: |
+          [Unit]
+          Description=App Service
+          After=network.target
+
+          [Service]
+          WorkingDirectory=/opt/app
+          ExecStart=/bin/bash -c 'source /opt/app/venv/bin/activate && exec gunicorn -b 0.0.0.0 appy:app'
+          Restart=always
+          #User=root
+          Environment="MYSQL_USER=admin"
+          Environment="MYSQL_PASSWORD=P@ssword"
+          Environment="MYSQL_DB=flask_db"
+          Environment="MYSQL_HOST="
+          Environment="FLASK_CONFIG=mysql"
+
+          [Install]
+          WantedBy=multi-user.target
+        mode: '0600'
+      notify:
+        - Reload systemd
+        - Restart app service
+
+    - name: Enable the app service
+      ansible.builtin.systemd:
+        name: app
+        enabled: true
+
+  handlers:
+    - name: Reload systemd
+      ansible.builtin.systemd:
+        daemon_reload: true
+
+    - name: Restart app service
+      ansible.builtin.systemd:
+        name: app.service
+        state: restarted
+
