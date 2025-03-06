@@ -274,3 +274,24 @@ gunicorn -b 0.0.0.0:8000 appy:app
 config = default
 creating app with config = default
 ```
+
+## Update SSH config file
+
+```
+DB_INSTANCE_PUBLIC_IP=$(aws ec2 describe-instances --instance-ids $DB_INSTANCE_ID --query 'Reservations[0].Instances[0].PublicIpAddress' --output text --region $REGION)
+```
+
+```
+cat > ~/.ssh/config <<EOL
+Host web-host
+    HostName $WEB_INSTANCE_PUBLIC_IP
+    User ubuntu
+    IdentityFile ~/my-key.pem
+
+Host db-host
+    HostName $DB_INSTANCE_PUBLIC_IP
+    User ubuntu
+    IdentityFile ~/my-key.pem
+    ProxyJump web-host
+EOL
+```
