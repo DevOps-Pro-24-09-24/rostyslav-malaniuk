@@ -1,0 +1,53 @@
+---
+# db_install.yml - Playbook for setting up the database server
+- name: Configure database server
+  hosts: all
+  become: true
+  vars:
+    db_user: "{{ mysql_user }}"
+    db_pass: "{{ mysql_pass  }}"
+    db_name: "{{ mysql_db  }}"
+
+  tasks:
+    # Install required Python package for MySQL modules
+    - name: Install required packages
+      ansible.builtin.apt:
+        name:
+          - python3
+          - python3-pymysql
+          - mysql-server
+        state: present
+        update_cache: true
+
+    # Configure MySQL to listen on all interfaces
+    - name: Configure MySQL to listen on all interfaces
+      ansible.builtin.blockinfile:
+        path: /etc/mysql/my.cnf
+        block: |
+          [mysqld]
+          bind-address = 0.0.0.0
+      notify: Restart MySQL
+
+    # Create database
+    - name: Create MySQL database
+      community.mysql.mysql_db:
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+        name: "{{ db_name }}"
+        state: present
+
+    # Create database user with specific privileges
+    - name: Create MySQL user
+      community.mysql.mysql_user:
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+        name: "{{ db_user }}"
+        password: "{{ db_pass }}"
+        priv: "{{ db_name }}.*:ALL"
+        host: "%"
+        state: present
+
+  handlers:
+    # Restart MySQL service if configuration changes
+    - name: Restart MySQL
+      ansible.builtin.service:
+        name: mysql
+        state: restarted

@@ -1,0 +1,25 @@
+- name: Deploy ip db instance to app instance
+  hosts: app_instance
+  become: true
+  tasks:
+    - name: Set MySQL environment variables
+      ansible.builtin.shell: |
+        sudo sed -i 's/^export MYSQL_HOST=.*/export MYSQL_HOST={{ ip_db }}/' /etc/profile.d/mysql_env.sh
+        source /etc/profile.d/mysql_env.sh
+        sudo sed -i 's/Environment="MYSQL_HOST="$/Environment="MYSQL_HOST={{ ip_db }}"/' /etc/systemd/system/app.service
+      args:
+        executable: /bin/bash
+      become: true
+      notify:
+        - Reload systemd
+        - Restart app service
+
+  handlers:
+    - name: Reload systemd
+      ansible.builtin.systemd:
+        daemon_reload: true
+
+    - name: Restart app service
+      ansible.builtin.systemd:
+        name: app.service
+        state: restarted
