@@ -1,57 +1,45 @@
-resource "aws_vpc" "vpc_hw7" {
-  cidr_block = var.cidr_pvc
-  enable_dns_support   = true
-  enable_dns_hostnames = true
-  tags = merge(var.tags, { Name = "PVC-hw7" })
+module "sg" {
+  source         = "./modules/sg"
+  vpc_id         = module.vpc.vpc_id
+  allowed_ssh_ip = var.allowed_ssh_ip
 }
 
-resource "aws_subnet" "public" {
-  vpc_id            = aws_vpc.vpc_hw7.id
-  cidr_block        = var.cidr_subnet_public
-  map_public_ip_on_launch = true
-  availability_zone = var.availability_zone
-  tags = merge(var.tags, { Name = "subnet-public" })
-}
-resource "aws_subnet" "private_a" {
-  vpc_id            = aws_vpc.vpc_hw7.id
-  cidr_block = var.cidr_subnet_private_a
-  availability_zone = var.availability_zone
-  tags = merge(var.tags, { Name = "subnet-private-a" })
-}
-resource "aws_subnet" "private_b" {
-  vpc_id            = aws_vpc.vpc_hw7.id
-  cidr_block = var.cidr_subnet_private_b
-  availability_zone = var.availability_zone_b
-  tags = merge(var.tags, { Name = "subnet-private-b" })
-}
-resource "aws_internet_gateway" "igw" {
-  vpc_id = aws_vpc.vpc_hw7.id
-  tags = merge(var.tags, { Name = "igw-1" })
+module "vpc" {
+  source             = "./modules/vpc"
+  vpc_cidr           = var.vpc_cidr
+  public_subnet_cidr = var.public_subnet_cidr
 }
 
-resource "aws_route_table" "public" {
-  vpc_id = aws_vpc.vpc_hw7.id
-
-  route {
-    cidr_block = "0.0.0.0/0"
-    gateway_id = aws_internet_gateway.igw.id
-  }
-  tags = merge(var.tags, { Name = "tr-public" })
+data "aws_secretsmanager_secret_version" "db_password" {
+  secret_id = "my-db-password"
 }
 
-resource "aws_route_table_association" "public" {
-  subnet_id      = aws_subnet.public.id
-  route_table_id = aws_route_table.public.id
+locals {
+  db_password = data.aws_secretsmanager_secret_version.db_password.secret_string
 }
 
-# EC2 Instance
-resource "aws_instance" "web" {
-  ami           = var.ami_id_web
-  instance_type = var.instance_type
-  iam_instance_profile = aws_iam_instance_profile.ec2_instance_profile.name
-  subnet_id     = aws_subnet.public.id
-  key_name = "my-ssh-key"
-  user_data     = file(var.user_data_app)
-  vpc_security_group_ids = [aws_security_group.sg_front.id]
-  tags = merge(var.tags, { Name = "web-instance" })
+module "rds" {
+  source = "./modules/rds"
+
+  db_name = var.db_name
+  db_user = var.db_user
+  # db_password            = var.db_password
+  db_password            = local.db_password
+  private_subnet_ids     = module.vpc.private_subnet_ids
+  vpc_security_group_ids = [module.sg.sg_RDS_id]
+}
+
+module "ec2" {
+  source = "./modules/ec2"
+
+  ami_id                 = var.ami_id
+  instance_type          = var.instance_type
+  subnet_id              = module.vpc.public_subnet_id
+  vpc_security_group_ids = [module.sg.sg_FRONT_id]
+  key_name               = var.key_name
+  rds_endpoint           = module.rds.db_endpoint
+  db_user                = var.db_user
+  # db_password            = var.db_password
+  db_password = local.db_password
+  db_name     = var.db_name
 }
